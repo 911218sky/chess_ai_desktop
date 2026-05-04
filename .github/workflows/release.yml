@@ -1,0 +1,146 @@
+name: Release Windows App
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version or tag name, for example v1.0.0
+        required: true
+      target:
+        description: Git ref or commit to release from
+        required: false
+        default: main
+
+permissions:
+  contents: write
+
+env:
+  CHESS_AI_DESKTOP_STOCKFISH_RELEASE_TAG: ${{ vars.CHESS_AI_DESKTOP_STOCKFISH_RELEASE_TAG }}
+  CHESS_AI_DESKTOP_STOCKFISH_ASSET_NAME: ${{ vars.CHESS_AI_DESKTOP_STOCKFISH_ASSET_NAME }}
+  CHESS_AI_DESKTOP_STOCKFISH_DESTINATION_PATH: third_party\stockfish\windows\stockfish.exe
+  CHESS_AI_DESKTOP_APP_PUBLISHER: ${{ vars.CHESS_AI_DESKTOP_APP_PUBLISHER }}
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.41.9
+          cache: true
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Validate Source
+        shell: pwsh
+        run: |
+          dart format --output=none --set-exit-if-changed .
+          flutter analyze
+          flutter test
+
+      - name: Resolve Release Metadata
+        id: metadata
+        shell: pwsh
+        run: |
+          if ("${{ github.ref }}" -like "refs/tags/*") {
+            $version = "${{ github.ref_name }}"
+            $target = "${{ github.sha }}"
+          } else {
+            $version = "${{ github.event.inputs.version }}"
+            if (-not $version) {
+              throw "workflow_dispatch requires a version input."
+            }
+            $target = "${{ github.event.inputs.target }}"
+            if (-not $target) {
+              $target = "${{ github.sha }}"
+            }
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "target=$target" >> $env:GITHUB_OUTPUT
+
+      - name: Download Bundled Stockfish
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\tools\download_stockfish.ps1 `
+            -ReleaseTag $env:CHESS_AI_DESKTOP_STOCKFISH_RELEASE_TAG `
+            -AssetName $env:CHESS_AI_DESKTOP_STOCKFISH_ASSET_NAME `
+            -DestinationPath $env:CHESS_AI_DESKTOP_STOCKFISH_DESTINATION_PATH
+
+      - name: Build Windows Release
+        run: flutter build windows --release
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Package Release Artifacts
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
+        run: |
+          $artifactDir = Join-Path $PWD "artifacts"
+          $releaseDir = Resolve-Path ".\build\windows\x64\runner\Release"
+          New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
+
+          $settingsFile = Join-Path $releaseDir "settings.json"
+          if (Test-Path $settingsFile) {
+            Remove-Item $settingsFile -Force
+          }
+
+          $portableZip = Join-Path $artifactDir "chess_ai_desktop_${env:RELEASE_VERSION}_windows_portable.zip"
+          if (Test-Path $portableZip) {
+            Remove-Item $portableZip -Force
+          }
+          Compress-Archive -Path (Join-Path $releaseDir "*") -DestinationPath $portableZip
+
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          $appPublisher = $env:CHESS_AI_DESKTOP_APP_PUBLISHER
+          if ([string]::IsNullOrWhiteSpace($appPublisher)) {
+            $appPublisher = "911218sky"
+          }
+          & $iscc ".\packaging\windows\chess_ai_desktop.iss" `
+            "/DAppVersion=$env:RELEASE_VERSION" `
+            "/DAppPublisher=$appPublisher" `
+            "/DSourceDir=$releaseDir" `
+            "/DOutputDir=$artifactDir"
+
+      - name: Upload Workflow Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: chess-ai-desktop-${{ steps.metadata.outputs.version }}
+          path: |
+            artifacts/chess_ai_desktop_${{ steps.metadata.outputs.version }}_windows_portable.zip
+            artifacts/chess_ai_desktop_${{ steps.metadata.outputs.version }}_windows_setup.exe
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
+          RELEASE_TARGET: ${{ steps.metadata.outputs.target }}
+        run: |
+          $portable = Resolve-Path "artifacts/chess_ai_desktop_${env:RELEASE_VERSION}_windows_portable.zip"
+          $installer = Resolve-Path "artifacts/chess_ai_desktop_${env:RELEASE_VERSION}_windows_setup.exe"
+
+          gh release view $env:RELEASE_VERSION *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:RELEASE_VERSION $portable $installer --clobber
+          } else {
+            gh release create $env:RELEASE_VERSION $portable $installer `
+              --target $env:RELEASE_TARGET `
+              --title $env:RELEASE_VERSION `
+              --generate-notes
+          }
