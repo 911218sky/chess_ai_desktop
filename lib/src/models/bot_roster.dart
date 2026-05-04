@@ -263,3 +263,28 @@ BotProfile profileForConfig(GameSessionConfig config) {
 
   return botRoster.first;
 }
+
+List<BotProfile> profilesForPersona(Persona persona) {
+  return [
+    for (final profile in botRoster)
+      if (profile.persona == persona) profile,
+  ];
+}
+
+BotProfile bestProfileForPersona(
+  Persona persona, {
+  DifficultyLevel? preferredDifficulty,
+}) {
+  final matches = profilesForPersona(persona);
+  if (matches.isEmpty) {
+    return botRoster.first;
+  }
+  if (preferredDifficulty != null) {
+    for (final profile in matches) {
+      if (profile.difficulty == preferredDifficulty) {
+        return profile;
+      }
+    }
+  }
+  return matches.first;
+}

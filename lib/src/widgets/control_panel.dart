@@ -36,9 +36,12 @@ class ControlPanel extends StatefulWidget {
     required this.onPersonaChanged,
     required this.onCoachPersonaChanged,
     required this.onTauntLevelChanged,
+    required this.onUndoPressed,
+    required this.onRedoPressed,
     required this.onNewGamePressed,
     required this.onRematchPressed,
     required this.onLlmEnabledChanged,
+    required this.onLlmProviderKindChanged,
     required this.onLlmProviderChanged,
     required this.onLlmBaseUrlChanged,
     required this.onLlmModelChanged,
@@ -69,9 +72,12 @@ class ControlPanel extends StatefulWidget {
   final ValueChanged<Persona> onPersonaChanged;
   final ValueChanged<CoachPersona> onCoachPersonaChanged;
   final ValueChanged<TauntLevel> onTauntLevelChanged;
+  final VoidCallback onUndoPressed;
+  final VoidCallback onRedoPressed;
   final Future<void> Function({GameSessionConfig? config}) onNewGamePressed;
   final Future<void> Function() onRematchPressed;
   final ValueChanged<bool> onLlmEnabledChanged;
+  final ValueChanged<LlmProviderKind> onLlmProviderKindChanged;
   final ValueChanged<String> onLlmProviderChanged;
   final ValueChanged<String> onLlmBaseUrlChanged;
   final ValueChanged<String> onLlmModelChanged;
@@ -143,53 +149,93 @@ class _ControlPanelState extends State<ControlPanel>
           final compactHeight = constraints.maxHeight < 430;
           final footerButtons = Padding(
             padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _FooterSelect(
-                    icon: Icons.tune_rounded,
-                    label: strings.options,
-                    value:
-                        '${widget.state.config.boardTheme.localizedLabel(strings)} / ${widget.state.config.locale.label}',
-                    onTap: () => _tabController.animateTo(1),
+            child: LayoutBuilder(
+              builder: (context, footerConstraints) {
+                final actionButtons = [
+                  SquareIconAction(
+                    icon: widget.state.config.playerSide == Side.white
+                        ? Icons.light_mode_rounded
+                        : Icons.dark_mode_rounded,
+                    active: true,
+                    tooltip: strings.switchSide,
+                    onTap: () {
+                      final next = widget.state.config.playerSide == Side.white
+                          ? Side.black
+                          : Side.white;
+                      widget.onPlayerSideChanged(next);
+                    },
                   ),
-                ),
-                const SizedBox(width: 12),
-                SquareIconAction(
-                  icon: widget.state.config.playerSide == Side.white
-                      ? Icons.light_mode_rounded
-                      : Icons.dark_mode_rounded,
-                  active: true,
-                  tooltip: strings.switchSide,
-                  onTap: () {
-                    final next = widget.state.config.playerSide == Side.white
-                        ? Side.black
-                        : Side.white;
-                    widget.onPlayerSideChanged(next);
-                  },
-                ),
-                const SizedBox(width: 8),
-                SquareIconAction(
-                  icon: Icons.psychology_alt_rounded,
-                  active: widget.state.config.hintMode != HintMode.off,
-                  tooltip: strings.toggleHints,
-                  onTap: () {
-                    final next = widget.state.config.hintMode == HintMode.off
-                        ? HintMode.bestMove
-                        : HintMode.off;
-                    widget.onHintModeChanged(next);
-                  },
-                ),
-                const SizedBox(width: 8),
-                SquareIconAction(
-                  icon: Icons.refresh_rounded,
-                  active: false,
-                  tooltip: strings.rematch,
-                  onTap: widget.state.aiThinking
-                      ? null
-                      : widget.onRematchPressed,
-                ),
-              ],
+                  SquareIconAction(
+                    icon: Icons.psychology_alt_rounded,
+                    active: widget.state.config.hintMode != HintMode.off,
+                    tooltip: strings.toggleHints,
+                    onTap: () {
+                      final next = widget.state.config.hintMode == HintMode.off
+                          ? HintMode.bestMove
+                          : HintMode.off;
+                      widget.onHintModeChanged(next);
+                    },
+                  ),
+                  SquareIconAction(
+                    icon: Icons.undo_rounded,
+                    active: widget.state.canUndo,
+                    tooltip: strings.undoMove,
+                    onTap: widget.state.canUndo ? widget.onUndoPressed : null,
+                  ),
+                  SquareIconAction(
+                    icon: Icons.redo_rounded,
+                    active: widget.state.canRedo,
+                    tooltip: strings.redoMove,
+                    onTap: widget.state.canRedo ? widget.onRedoPressed : null,
+                  ),
+                  SquareIconAction(
+                    icon: Icons.refresh_rounded,
+                    active: false,
+                    tooltip: strings.rematch,
+                    onTap: widget.state.aiThinking
+                        ? null
+                        : widget.onRematchPressed,
+                  ),
+                ];
+
+                final optionsSelect = _FooterSelect(
+                  icon: Icons.tune_rounded,
+                  label: strings.options,
+                  value:
+                      '${widget.state.config.boardTheme.localizedLabel(strings)} / ${widget.state.config.locale.label}',
+                  onTap: () => _tabController.animateTo(1),
+                );
+
+                if (footerConstraints.maxWidth < 470) {
+                  return Column(
+                    children: [
+                      optionsSelect,
+                      const SizedBox(height: 10),
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: actionButtons,
+                      ),
+                    ],
+                  );
+                }
+
+                return Row(
+                  children: [
+                    Expanded(child: optionsSelect),
+                    const SizedBox(width: 12),
+                    for (
+                      var index = 0;
+                      index < actionButtons.length;
+                      index++
+                    ) ...[
+                      if (index > 0) const SizedBox(width: 8),
+                      actionButtons[index],
+                    ],
+                  ],
+                );
+              },
             ),
           );
           final newGameButton = Padding(
@@ -211,7 +257,11 @@ class _ControlPanelState extends State<ControlPanel>
                       ?.copyWith(fontWeight: FontWeight.w800),
                 ),
                 child: Text(
-                  widget.state.aiThinking ? strings.thinking : strings.play,
+                  widget.state.aiThinking
+                      ? strings.thinking
+                      : (widget.state.initialized
+                            ? strings.restart
+                            : strings.play),
                 ),
               ),
             ),
@@ -297,9 +347,13 @@ class _ControlPanelState extends State<ControlPanel>
                             onPersonaChanged: widget.onPersonaChanged,
                             onCoachPersonaChanged: widget.onCoachPersonaChanged,
                             onTauntLevelChanged: widget.onTauntLevelChanged,
+                            onUndoPressed: widget.onUndoPressed,
+                            onRedoPressed: widget.onRedoPressed,
                             onNewGamePressed: widget.onNewGamePressed,
                             onRematchPressed: widget.onRematchPressed,
                             onLlmEnabledChanged: widget.onLlmEnabledChanged,
+                            onLlmProviderKindChanged:
+                                widget.onLlmProviderKindChanged,
                             onLlmProviderChanged: widget.onLlmProviderChanged,
                             onLlmBaseUrlChanged: widget.onLlmBaseUrlChanged,
                             onLlmModelChanged: widget.onLlmModelChanged,
@@ -356,6 +410,8 @@ class ControlPanelViewState {
     required this.llmStatusMessage,
     required this.llmStats,
     required this.moveHistory,
+    required this.canUndo,
+    required this.canRedo,
   });
 
   factory ControlPanelViewState.fromGameState(GameState state) {
@@ -375,6 +431,8 @@ class ControlPanelViewState {
       llmStatusMessage: state.llmStatusMessage,
       llmStats: state.llmStats,
       moveHistory: state.moveHistory,
+      canUndo: state.canUndo,
+      canRedo: state.canRedo,
     );
   }
 
@@ -393,6 +451,8 @@ class ControlPanelViewState {
   final String? llmStatusMessage;
   final LlmUsageStats llmStats;
   final List<String> moveHistory;
+  final bool canUndo;
+  final bool canRedo;
 
   bool get hasMoveReview => latestReview != null;
 
@@ -415,6 +475,8 @@ class ControlPanelViewState {
       llmStatusMessage: llmStatusMessage,
       llmStats: llmStats,
       moveHistory: moveHistory,
+      canUndo: canUndo,
+      canRedo: canRedo,
     );
   }
 
@@ -435,7 +497,9 @@ class ControlPanelViewState {
         other.llmFetchingModels == llmFetchingModels &&
         other.llmStatusMessage == llmStatusMessage &&
         _sameLlmUsageStats(other.llmStats, llmStats) &&
-        _sameStrings(other.moveHistory, moveHistory);
+        _sameStrings(other.moveHistory, moveHistory) &&
+        other.canUndo == canUndo &&
+        other.canRedo == canRedo;
   }
 
   @override
@@ -455,6 +519,8 @@ class ControlPanelViewState {
     llmStatusMessage,
     _llmUsageStatsHash(llmStats),
     Object.hashAll(moveHistory),
+    canUndo,
+    canRedo,
   );
 }
 
@@ -546,9 +612,12 @@ class _ControlPanelTabPage extends StatefulWidget {
     required this.onPersonaChanged,
     required this.onCoachPersonaChanged,
     required this.onTauntLevelChanged,
+    required this.onUndoPressed,
+    required this.onRedoPressed,
     required this.onNewGamePressed,
     required this.onRematchPressed,
     required this.onLlmEnabledChanged,
+    required this.onLlmProviderKindChanged,
     required this.onLlmProviderChanged,
     required this.onLlmBaseUrlChanged,
     required this.onLlmModelChanged,
@@ -581,9 +650,12 @@ class _ControlPanelTabPage extends StatefulWidget {
   final ValueChanged<Persona> onPersonaChanged;
   final ValueChanged<CoachPersona> onCoachPersonaChanged;
   final ValueChanged<TauntLevel> onTauntLevelChanged;
+  final VoidCallback onUndoPressed;
+  final VoidCallback onRedoPressed;
   final Future<void> Function({GameSessionConfig? config}) onNewGamePressed;
   final Future<void> Function() onRematchPressed;
   final ValueChanged<bool> onLlmEnabledChanged;
+  final ValueChanged<LlmProviderKind> onLlmProviderKindChanged;
   final ValueChanged<String> onLlmProviderChanged;
   final ValueChanged<String> onLlmBaseUrlChanged;
   final ValueChanged<String> onLlmModelChanged;
@@ -642,6 +714,7 @@ class _ControlPanelTabPageState extends State<_ControlPanelTabPage> {
         return LlmTab(
           state: widget.state,
           onLlmEnabledChanged: widget.onLlmEnabledChanged,
+          onLlmProviderKindChanged: widget.onLlmProviderKindChanged,
           onPersonaChanged: widget.onPersonaChanged,
           onCoachPersonaChanged: widget.onCoachPersonaChanged,
           onLlmProviderChanged: widget.onLlmProviderChanged,
@@ -801,12 +874,15 @@ class _FooterSelect extends StatelessWidget {
                   children: [
                     Text(
                       label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                     Text(
                       value,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(
                         context,

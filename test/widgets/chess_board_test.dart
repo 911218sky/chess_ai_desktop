@@ -153,6 +153,33 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('renders check highlight for the side to move', (tester) async {
+    final checkPosition = Position.setupPosition(
+      Rule.chess,
+      Setup.parseFen('4k3/8/8/8/8/8/4r3/4K3 w - - 0 1'),
+    );
+
+    await _pumpBoard(tester, position: checkPosition);
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ChessBoard), findsOneWidget);
+  });
+
+  testWidgets('only legal response pieces stay draggable while in check', (
+    tester,
+  ) async {
+    final checkPosition = Position.setupPosition(
+      Rule.chess,
+      Setup.parseFen('4k3/8/8/8/8/8/P3r3/4K3 w - - 0 1'),
+    );
+
+    await _pumpBoard(tester, position: checkPosition);
+    await tester.pump();
+
+    expect(find.byType(Draggable<Square>), findsOneWidget);
+  });
+
   test('uses the dragged piece size as the feedback anchor', () {
     expect(pieceDragVisualSize(100), 80);
     expect(pieceDragFeedbackOffset(100), const Offset(-40, -40));
@@ -167,6 +194,7 @@ Future<void> _pumpBoard(
   String? resultKey,
   GameResultDisplay? resultDisplay,
   Side? losingSide,
+  Position? position,
   double textScaleFactor = 1,
   double boardSize = 520,
   Future<void> Function(Square square)? onSquareTap,
@@ -181,7 +209,7 @@ Future<void> _pumpBoard(
             child: SizedBox.square(
               dimension: boardSize,
               child: ChessBoard(
-                position: Position.initialPosition(Rule.chess),
+                position: position ?? Position.initialPosition(Rule.chess),
                 orientation: orientation,
                 selectedSquare: null,
                 legalTargets: const {},

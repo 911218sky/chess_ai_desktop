@@ -356,12 +356,14 @@ class LabeledTextField extends StatelessWidget {
     required this.controller,
     required this.onChanged,
     this.obscureText = false,
+    this.hintText,
   });
 
   final String label;
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
   final bool obscureText;
+  final String? hintText;
 
   @override
   Widget build(BuildContext context) {
@@ -374,6 +376,7 @@ class LabeledTextField extends StatelessWidget {
           controller: controller,
           obscureText: obscureText,
           onChanged: onChanged,
+          decoration: InputDecoration(helperText: hintText),
         ),
       ],
     );

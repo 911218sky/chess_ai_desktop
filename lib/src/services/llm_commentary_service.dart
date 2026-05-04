@@ -10,6 +10,43 @@ class LlmCommentaryService {
   final HttpClient _client;
 
   Future<List<String>> fetchModels(LlmSettings settings) async {
+    return switch (settings.providerKind) {
+      LlmProviderKind.anthropicClaude => _fetchAnthropicModels(settings),
+      _ => _fetchOpenAiCompatibleModels(settings),
+    };
+  }
+
+  Future<void> testConnection(LlmSettings settings) async {
+    final models = await fetchModels(settings);
+    if (models.isEmpty) {
+      throw const LlmException(
+        'Connection worked, but no models were returned.',
+      );
+    }
+  }
+
+  Future<LlmCompletionResult> complete({
+    required LlmSettings settings,
+    required String systemPrompt,
+    required String userPrompt,
+  }) async {
+    return switch (settings.providerKind) {
+      LlmProviderKind.anthropicClaude => _completeAnthropic(
+        settings: settings,
+        systemPrompt: systemPrompt,
+        userPrompt: userPrompt,
+      ),
+      _ => _completeOpenAiCompatible(
+        settings: settings,
+        systemPrompt: systemPrompt,
+        userPrompt: userPrompt,
+      ),
+    };
+  }
+
+  Future<List<String>> _fetchOpenAiCompatibleModels(
+    LlmSettings settings,
+  ) async {
     final payload = await _sendJson(
       method: 'GET',
       uri: _uri(settings.baseUrl, 'models'),
@@ -32,16 +69,30 @@ class LlmCommentaryService {
     return models;
   }
 
-  Future<void> testConnection(LlmSettings settings) async {
-    final models = await fetchModels(settings);
-    if (models.isEmpty) {
-      throw const LlmException(
-        'Connection worked, but no models were returned.',
-      );
+  Future<List<String>> _fetchAnthropicModels(LlmSettings settings) async {
+    final payload = await _sendJson(
+      method: 'GET',
+      uri: _uri(settings.baseUrl, 'models'),
+      settings: settings,
+      timeout: const Duration(seconds: 20),
+    );
+
+    final data = payload is Map<String, Object?> ? payload['data'] : null;
+    if (data is! List) {
+      throw const LlmException('Models response did not include a data list.');
     }
+
+    final models = <String>[];
+    for (final item in data) {
+      if (item is Map<String, Object?> && item['id'] is String) {
+        models.add(item['id']! as String);
+      }
+    }
+    models.sort();
+    return models;
   }
 
-  Future<LlmCompletionResult> complete({
+  Future<LlmCompletionResult> _completeOpenAiCompatible({
     required LlmSettings settings,
     required String systemPrompt,
     required String userPrompt,
@@ -101,6 +152,56 @@ class LlmCommentaryService {
     throw const LlmException('Chat response was empty.');
   }
 
+  Future<LlmCompletionResult> _completeAnthropic({
+    required LlmSettings settings,
+    required String systemPrompt,
+    required String userPrompt,
+  }) async {
+    final startedAt = DateTime.now();
+    final payload = await _sendJson(
+      method: 'POST',
+      uri: _uri(settings.baseUrl, 'messages'),
+      settings: settings,
+      timeout: const Duration(seconds: 24),
+      body: {
+        'model': settings.model,
+        'system': systemPrompt,
+        'max_tokens': 90,
+        'temperature': 0.8,
+        'messages': [
+          {'role': 'user', 'content': userPrompt},
+        ],
+      },
+    );
+
+    final latencyMs = DateTime.now().difference(startedAt).inMilliseconds;
+    final usage = payload is Map<String, Object?>
+        ? LlmTokenUsage.fromAnthropicJson(payload['usage'])
+        : null;
+
+    final content = payload is Map<String, Object?> ? payload['content'] : null;
+    if (content is! List || content.isEmpty) {
+      throw const LlmException('Claude response did not include content.');
+    }
+
+    for (final block in content) {
+      if (block is Map<String, Object?> &&
+          block['type'] == 'text' &&
+          block['text'] is String) {
+        final text = (block['text']! as String).trim();
+        if (text.isNotEmpty) {
+          return LlmCompletionResult(
+            text: text,
+            usage: usage,
+            latencyMs: latencyMs,
+          );
+        }
+      }
+    }
+
+    throw const LlmException('Claude response was empty.');
+  }
+
   Future<Object?> _sendJson({
     required String method,
     required Uri uri,
@@ -111,7 +212,12 @@ class LlmCommentaryService {
     final request = await _client.openUrl(method, uri).timeout(timeout);
     request.headers.contentType = ContentType.json;
     final apiKey = settings.apiKey.trim();
-    if (apiKey.isNotEmpty) {
+    if (settings.providerKind.usesAnthropicApi) {
+      if (apiKey.isNotEmpty) {
+        request.headers.set('x-api-key', apiKey);
+      }
+      request.headers.set('anthropic-version', '2023-06-01');
+    } else if (apiKey.isNotEmpty) {
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $apiKey');
     }
     if (body != null) {
@@ -181,6 +287,23 @@ class LlmTokenUsage {
       promptTokens: prompt,
       completionTokens: completion,
       totalTokens: total,
+    );
+  }
+
+  factory LlmTokenUsage.fromAnthropicJson(Object? json) {
+    if (json is! Map<String, Object?>) {
+      return const LlmTokenUsage(
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+      );
+    }
+    final prompt = _intValue(json['input_tokens']);
+    final completion = _intValue(json['output_tokens']);
+    return LlmTokenUsage(
+      promptTokens: prompt,
+      completionTokens: completion,
+      totalTokens: prompt + completion,
     );
   }
 }

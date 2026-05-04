@@ -35,6 +35,13 @@ class BotsTab extends StatelessWidget {
             message: state.opponentMessage,
           ),
           const SizedBox(height: 14),
+          _PersonaDeck(
+            state: state,
+            currentProfile: currentProfile,
+            strings: strings,
+            onProfileSelected: onProfileSelected,
+          ),
+          const SizedBox(height: 14),
           for (final category in categories) ...[
             _BotCategorySection(
               category: category,
@@ -157,7 +164,171 @@ class _HeroSpeech extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: 10),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.04),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: Text(
+            profile.persona.localizedDescription(strings),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Colors.white70,
+              height: 1.3,
+            ),
+          ),
+        ),
       ],
+    );
+  }
+}
+
+class _PersonaDeck extends StatelessWidget {
+  const _PersonaDeck({
+    required this.state,
+    required this.currentProfile,
+    required this.strings,
+    required this.onProfileSelected,
+  });
+
+  final GameState state;
+  final BotProfile currentProfile;
+  final AppStrings strings;
+  final ValueChanged<BotProfile> onProfileSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final personas = <Persona>{
+      for (final profile in botRoster) profile.persona,
+    }.toList(growable: false);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white10),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            strings.personality,
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            strings.personalityDescription,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Colors.white60,
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final persona in personas)
+                _PersonaCard(
+                  persona: persona,
+                  strings: strings,
+                  selected: currentProfile.persona == persona,
+                  roleExamples: profilesForPersona(persona)
+                      .take(2)
+                      .map((profile) => profile.localizedName(strings))
+                      .join(' / '),
+                  onTap: () {
+                    onProfileSelected(
+                      bestProfileForPersona(
+                        persona,
+                        preferredDifficulty: state.config.difficulty,
+                      ),
+                    );
+                  },
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PersonaCard extends StatelessWidget {
+  const _PersonaCard({
+    required this.persona,
+    required this.strings,
+    required this.selected,
+    required this.roleExamples,
+    required this.onTap,
+  });
+
+  final Persona persona;
+  final AppStrings strings;
+  final bool selected;
+  final String roleExamples;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tone = selected
+        ? AppColors.primary
+        : botProfileTone(bestProfileForPersona(persona));
+    return SizedBox(
+      width: 184,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: tone.withValues(alpha: selected ? 0.18 : 0.08),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: tone.withValues(alpha: selected ? 0.72 : 0.34),
+              width: selected ? 1.6 : 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                persona.localizedLabel(strings),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                roleExamples,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.labelMedium?.copyWith(color: tone),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                persona.localizedDescription(strings),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Colors.white70,
+                  height: 1.3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

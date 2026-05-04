@@ -40,6 +40,7 @@ void main() {
     final customState = _stateWithLlm(
       const LlmSettings(
         enabled: true,
+        providerKind: LlmProviderKind.customCompatible,
         provider: 'Custom Gateway',
         baseUrl: 'https://llm.example.test/v1',
         model: 'custom-model',
@@ -48,10 +49,10 @@ void main() {
     );
 
     await _pumpControlPanel(tester, customState);
-    await tester.tap(find.text('LLM'));
+    await tester.tap(find.widgetWithText(Tab, 'LLM'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Custom Gateway'), findsOneWidget);
+    expect(_llmTextField(tester, 0).controller?.text, 'Custom Gateway');
     expect(find.text('https://llm.example.test/v1'), findsOneWidget);
     expect(find.text('custom-model'), findsOneWidget);
 
@@ -61,7 +62,7 @@ void main() {
     expect(find.text('Custom Gateway'), findsNothing);
     expect(find.text('https://llm.example.test/v1'), findsNothing);
     expect(find.text('custom-model'), findsNothing);
-    expect(find.text('OpenAI Compatible'), findsOneWidget);
+    expect(_llmTextField(tester, 0).controller?.text, 'OpenAI Compatible');
     expect(find.text('https://api.openai.com/v1'), findsOneWidget);
     expect(find.text('gpt-5.5'), findsOneWidget);
     expect(_llmTextField(tester, 3).controller?.text, isEmpty);
@@ -77,7 +78,7 @@ void main() {
     final state = _stateWithLlm(const LlmSettings());
 
     await _pumpControlPanel(tester, state);
-    await tester.tap(find.text('LLM'));
+    await tester.tap(find.widgetWithText(Tab, 'LLM'));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextFormField).at(0), 'Editing Gateway');
@@ -100,7 +101,7 @@ void main() {
       tester,
       _stateWithLlm(const LlmSettings(apiKey: 'first-secret')),
     );
-    await tester.tap(find.text('LLM'));
+    await tester.tap(find.widgetWithText(Tab, 'LLM'));
     await tester.pumpAndSettle();
 
     expect(_llmTextField(tester, 3).controller?.text, 'first-secret');
@@ -159,7 +160,7 @@ void main() {
         maxSeconds = value;
       },
     );
-    await tester.tap(find.text('LLM'));
+    await tester.tap(find.widgetWithText(Tab, 'LLM'));
     await tester.pumpAndSettle();
 
     expect(find.text('LLM Usage'), findsOneWidget);
@@ -218,7 +219,8 @@ void main() {
       },
     );
 
-    await tester.tap(find.text('Beginner'));
+    await tester.ensureVisible(find.text('Beginner').last);
+    await tester.tap(find.text('Beginner').last);
     await tester.pumpAndSettle();
 
     final expectedProfile = botRoster.firstWhere(
@@ -246,7 +248,7 @@ void main() {
       },
     );
 
-    await tester.tap(find.text('Match'));
+    await tester.tap(find.widgetWithText(Tab, 'Match'));
     await tester.pumpAndSettle();
     final blackSideChip = find.widgetWithText(ChoiceChip, 'black');
     await tester.ensureVisible(blackSideChip);
@@ -272,7 +274,7 @@ void main() {
       },
     );
 
-    await tester.tap(find.text('Coach'));
+    await tester.tap(find.widgetWithText(Tab, 'Coach'));
     await tester.pumpAndSettle();
     final fullTauntChip = find.widgetWithText(ChoiceChip, 'Full');
     await tester.ensureVisible(fullTauntChip);
@@ -300,7 +302,7 @@ void main() {
     ).copyWith(latestReview: review, reviewHistory: [review]);
 
     await _pumpControlPanel(tester, state);
-    await tester.tap(find.text('Coach'));
+    await tester.tap(find.widgetWithText(Tab, 'Coach'));
     await tester.pumpAndSettle();
 
     expect(find.text('Coach Feed'), findsOneWidget);
@@ -320,7 +322,7 @@ void main() {
     final strings = AppStrings.of(state.config.locale);
 
     await _pumpControlPanel(tester, state);
-    await tester.tap(find.text(strings.liveReview));
+    await tester.tap(find.widgetWithText(Tab, strings.liveReview));
     await tester.pumpAndSettle();
 
     expect(find.text(strings.waitingForMoveReview), findsNothing);
@@ -357,7 +359,7 @@ void main() {
     ).copyWith(latestReview: reviews.last, reviewHistory: reviews);
 
     await _pumpControlPanel(tester, state);
-    await tester.tap(find.text('Live Review'));
+    await tester.tap(find.widgetWithText(Tab, 'Live Review'));
     await tester.pumpAndSettle();
 
     expect(find.text('Reviewed'), findsOneWidget);
@@ -395,7 +397,7 @@ void main() {
     ).copyWith(latestReview: review, reviewHistory: [review]);
 
     await _pumpControlPanel(tester, state);
-    await tester.tap(find.text('即時覆盤'));
+    await tester.tap(find.widgetWithText(Tab, '即時覆盤'));
     await tester.pumpAndSettle();
 
     expect(find.text('大失誤'), findsOneWidget);
@@ -417,7 +419,7 @@ void main() {
     final state = _stateWithLlm(const LlmSettings());
 
     await _pumpControlPanel(tester, state);
-    await tester.tap(find.text('Coach'));
+    await tester.tap(find.widgetWithText(Tab, 'Coach'));
     await tester.pumpAndSettle();
 
     await _pumpControlPanel(tester, state.copyWith(aiThinking: true));
@@ -425,6 +427,21 @@ void main() {
 
     expect(find.text('Coach'), findsOneWidget);
     expect(find.text('Play Bots'), findsOneWidget);
+  });
+
+  testWidgets('bottom action shows restart after initialization', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(520, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await _pumpControlPanel(
+      tester,
+      _stateWithLlm(const LlmSettings()).copyWith(initialized: true),
+    );
+
+    expect(find.text('Restart'), findsOneWidget);
   });
 }
 
@@ -493,9 +510,12 @@ Future<void> _pumpControlPanel(
             onPersonaChanged: (_) {},
             onCoachPersonaChanged: (_) {},
             onTauntLevelChanged: onTauntLevelChanged ?? (_) {},
+            onUndoPressed: () {},
+            onRedoPressed: () {},
             onNewGamePressed: onNewGamePressed ?? ({config}) async {},
             onRematchPressed: () async {},
             onLlmEnabledChanged: (_) {},
+            onLlmProviderKindChanged: (_) {},
             onLlmProviderChanged: (_) {},
             onLlmBaseUrlChanged: (_) {},
             onLlmModelChanged: (_) {},

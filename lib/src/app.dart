@@ -207,9 +207,12 @@ class _ChessHomePageState extends ConsumerState<ChessHomePage> {
               onPersonaChanged: controller.updatePersona,
               onCoachPersonaChanged: controller.updateCoachPersona,
               onTauntLevelChanged: controller.updateTauntLevel,
+              onUndoPressed: controller.undoTurn,
+              onRedoPressed: controller.redoTurn,
               onNewGamePressed: controller.startNewGame,
               onRematchPressed: controller.rematch,
               onLlmEnabledChanged: controller.updateLlmEnabled,
+              onLlmProviderKindChanged: controller.updateLlmProviderKind,
               onLlmProviderChanged: controller.updateLlmProvider,
               onLlmBaseUrlChanged: controller.updateLlmBaseUrl,
               onLlmModelChanged: controller.updateLlmModel,
@@ -370,9 +373,12 @@ class _ControlPanelConnector extends ConsumerWidget {
       onPersonaChanged: controller.updatePersona,
       onCoachPersonaChanged: controller.updateCoachPersona,
       onTauntLevelChanged: controller.updateTauntLevel,
+      onUndoPressed: controller.undoTurn,
+      onRedoPressed: controller.redoTurn,
       onNewGamePressed: controller.startNewGame,
       onRematchPressed: controller.rematch,
       onLlmEnabledChanged: controller.updateLlmEnabled,
+      onLlmProviderKindChanged: controller.updateLlmProviderKind,
       onLlmProviderChanged: controller.updateLlmProvider,
       onLlmBaseUrlChanged: controller.updateLlmBaseUrl,
       onLlmModelChanged: controller.updateLlmModel,
@@ -562,6 +568,7 @@ class _DialogueViewState {
     required this.coachMessage,
     required this.coachMessageSource,
     required this.aiThinking,
+    required this.coachThinking,
     required this.llmStatusMessage,
     required this.llmError,
     required this.textScale,
@@ -577,6 +584,7 @@ class _DialogueViewState {
   final String coachMessage;
   final DialogueMessageSource coachMessageSource;
   final bool aiThinking;
+  final bool coachThinking;
   final String? llmStatusMessage;
   final String? llmError;
   final double textScale;
@@ -594,6 +602,7 @@ class _DialogueViewState {
         other.coachMessage == coachMessage &&
         other.coachMessageSource == coachMessageSource &&
         other.aiThinking == aiThinking &&
+        other.coachThinking == coachThinking &&
         other.llmStatusMessage == llmStatusMessage &&
         other.llmError == llmError &&
         other.textScale == textScale &&
@@ -611,6 +620,7 @@ class _DialogueViewState {
     coachMessage,
     coachMessageSource,
     aiThinking,
+    coachThinking,
     llmStatusMessage,
     llmError,
     textScale,
@@ -637,6 +647,7 @@ class _DialogueConnector extends ConsumerWidget {
           coachMessage: state.coachMessage,
           coachMessageSource: state.coachMessageSource,
           aiThinking: state.aiThinking,
+          coachThinking: state.coachThinking,
           llmStatusMessage: state.llmStatusMessage,
           llmError: state.lastLlmError,
           textScale: state.config.appTextScalePercent / 100,
@@ -655,6 +666,7 @@ class _DialogueConnector extends ConsumerWidget {
       coachMessage: viewState.coachMessage,
       coachMessageSource: viewState.coachMessageSource,
       aiThinking: viewState.aiThinking,
+      coachThinking: viewState.coachThinking,
       llmStatusMessage: viewState.llmStatusMessage,
       llmError: viewState.llmError,
       textScale: viewState.textScale,
@@ -1310,6 +1322,7 @@ class _DialogueRail extends StatelessWidget {
     required this.coachMessage,
     required this.coachMessageSource,
     required this.aiThinking,
+    required this.coachThinking,
     required this.llmStatusMessage,
     required this.llmError,
     required this.textScale,
@@ -1324,6 +1337,7 @@ class _DialogueRail extends StatelessWidget {
   final String coachMessage;
   final DialogueMessageSource coachMessageSource;
   final bool aiThinking;
+  final bool coachThinking;
   final String? llmStatusMessage;
   final String? llmError;
   final double textScale;
@@ -1364,7 +1378,7 @@ class _DialogueRail extends StatelessWidget {
                   message: coachMessage,
                   source: coachMessageSource,
                   light: false,
-                  busy: false,
+                  busy: coachThinking,
                   textScale: textScale,
                 ),
               ),
@@ -1462,58 +1476,216 @@ class _DialogueTileState extends State<_DialogueTile> {
           ),
         ],
       ),
-      child: Row(
+      child: Stack(
         children: [
-          Container(
+          Row(
+            children: [
+              _ThinkingAvatar(
+                icon: widget.icon,
+                tone: widget.tone,
+                light: widget.light,
+                busy: widget.busy,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ClipRect(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 180),
+                    child: _showMarkdown
+                        ? _AutoScrollDialogueBody(
+                            key: ValueKey('scroll-markdown-${widget.message}'),
+                            child: _DialogueMarkdown(
+                              key: ValueKey('markdown-${widget.message}'),
+                              message: widget.message,
+                              style: bodyStyle,
+                              textColor: bodyColor,
+                              light: widget.light,
+                            ),
+                          )
+                        : _AutoScrollDialogueBody(
+                            key: ValueKey('scroll-typing-${widget.message}'),
+                            child: TypewriterText(
+                              key: ValueKey('typing-${widget.message}'),
+                              text: widget.message,
+                              style: bodyStyle,
+                              overflow: TextOverflow.visible,
+                              onCompleted: () {
+                                if (!mounted) {
+                                  return;
+                                }
+                                setState(() => _showMarkdown = true);
+                              },
+                            ),
+                          ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (widget.busy)
+            Positioned(
+              left: 44,
+              bottom: 0,
+              child: IgnorePointer(
+                child: _ThinkingDots(tone: widget.tone, light: widget.light),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ThinkingAvatar extends StatefulWidget {
+  const _ThinkingAvatar({
+    required this.icon,
+    required this.tone,
+    required this.light,
+    required this.busy,
+  });
+
+  final IconData icon;
+  final Color tone;
+  final bool light;
+  final bool busy;
+
+  @override
+  State<_ThinkingAvatar> createState() => _ThinkingAvatarState();
+}
+
+class _ThinkingAvatarState extends State<_ThinkingAvatar>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    );
+    if (widget.busy) {
+      _controller.repeat();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _ThinkingAvatar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.busy && !_controller.isAnimating) {
+      _controller.repeat();
+    } else if (!widget.busy && _controller.isAnimating) {
+      _controller.stop();
+      _controller.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fill = widget.tone.withValues(alpha: widget.light ? 0.14 : 0.18);
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final pulse = widget.busy
+            ? 1 + (math.sin(_controller.value * math.pi * 2) * 0.06)
+            : 1.0;
+        final glow = widget.busy
+            ? 0.18 +
+                  (0.16 *
+                      (0.5 + 0.5 * math.sin(_controller.value * math.pi * 2)))
+            : 0.0;
+        return Transform.scale(
+          scale: pulse,
+          child: Container(
             width: 34,
             height: 34,
             decoration: BoxDecoration(
-              color: widget.tone.withValues(alpha: widget.light ? 0.14 : 0.18),
+              color: fill,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: widget.tone.withValues(alpha: 0.48)),
+              boxShadow: [
+                if (widget.busy)
+                  BoxShadow(
+                    blurRadius: 16,
+                    color: widget.tone.withValues(alpha: glow),
+                    offset: const Offset(0, 4),
+                  ),
+              ],
             ),
-            child: widget.busy
-                ? const Padding(
-                    padding: EdgeInsets.all(9),
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Icon(widget.icon, color: widget.tone, size: 19),
+            child: Icon(widget.icon, color: widget.tone, size: 19),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: ClipRect(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
-                child: _showMarkdown
-                    ? _AutoScrollDialogueBody(
-                        key: ValueKey('scroll-markdown-${widget.message}'),
-                        child: _DialogueMarkdown(
-                          key: ValueKey('markdown-${widget.message}'),
-                          message: widget.message,
-                          style: bodyStyle,
-                          textColor: bodyColor,
-                          light: widget.light,
-                        ),
-                      )
-                    : _AutoScrollDialogueBody(
-                        key: ValueKey('scroll-typing-${widget.message}'),
-                        child: TypewriterText(
-                          key: ValueKey('typing-${widget.message}'),
-                          text: widget.message,
-                          style: bodyStyle,
-                          overflow: TextOverflow.visible,
-                          onCompleted: () {
-                            if (!mounted) {
-                              return;
-                            }
-                            setState(() => _showMarkdown = true);
-                          },
-                        ),
-                      ),
-              ),
-            ),
-          ),
-        ],
+        );
+      },
+    );
+  }
+}
+
+class _ThinkingDots extends StatefulWidget {
+  const _ThinkingDots({required this.tone, required this.light});
+
+  final Color tone;
+  final bool light;
+
+  @override
+  State<_ThinkingDots> createState() => _ThinkingDotsState();
+}
+
+class _ThinkingDotsState extends State<_ThinkingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final baseColor = widget.light ? const Color(0xFF6A6256) : Colors.white70;
+    return SizedBox(
+      height: 12,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(3, (index) {
+              final phase = (_controller.value + (index * 0.18)) % 1.0;
+              final scale =
+                  0.72 + (0.45 * (0.5 + 0.5 * math.sin(phase * math.pi * 2)));
+              return Padding(
+                padding: EdgeInsets.only(right: index == 2 ? 0 : 5),
+                child: Transform.scale(
+                  scale: scale,
+                  child: Container(
+                    width: 5,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: Color.lerp(baseColor, widget.tone, 0.72),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              );
+            }),
+          );
+        },
       ),
     );
   }

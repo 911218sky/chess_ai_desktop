@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:chess_ai_desktop/src/controllers/game_controller.dart';
+import 'package:chess_ai_desktop/src/i18n/app_localizations.dart';
 import 'package:chess_ai_desktop/src/models/engine_models.dart';
 import 'package:chess_ai_desktop/src/models/game_state.dart';
 import 'package:chess_ai_desktop/src/models/session_config.dart';
@@ -441,6 +442,104 @@ void main() {
     expect(settings.idleBanterEnabled, isTrue);
     expect(settings.idleBanterMinSeconds, 10);
     expect(settings.idleBanterMaxSeconds, 45);
+  });
+
+  test('status text warns when player is in check', () async {
+    final stockfish = _FakeStockfishService();
+    final container = _container(stockfish: stockfish);
+    addTearDown(container.dispose);
+
+    final controller = container.read(gameControllerProvider.notifier);
+    stockfish.completeNextHardware(_hardwareProfile());
+    await controller.startNewGame(
+      config: GameSessionConfig.defaults().copyWith(hintMode: HintMode.off),
+    );
+
+    final checkPosition = Position.setupPosition(
+      Rule.chess,
+      Setup.parseFen('4k3/8/8/8/8/8/4r3/4K3 w - - 0 1'),
+    );
+
+    final current = container.read(gameControllerProvider);
+    controller.state = current.copyWith(position: checkPosition);
+    controller.updateLocale(current.config.locale);
+
+    expect(
+      container.read(gameControllerProvider).statusText,
+      AppStrings.of(current.config.locale).playerInCheck,
+    );
+  });
+
+  test('undo and redo restore stable player-turn snapshots', () async {
+    final stockfish = _FakeStockfishService();
+    final container = _container(stockfish: stockfish);
+    addTearDown(container.dispose);
+
+    final controller = container.read(gameControllerProvider.notifier);
+    stockfish.completeNextHardware(_hardwareProfile());
+    await controller.startNewGame(
+      config: GameSessionConfig.defaults().copyWith(hintMode: HintMode.off),
+    );
+
+    final move = controller.dropMove(Square.e2, Square.e4);
+    await Future<void>.delayed(Duration.zero);
+    stockfish.completeNextAnalysis(multiPv: 1, bestMove: 'e7e5');
+    await move;
+    await Future<void>.delayed(Duration.zero);
+
+    final afterPair = container.read(gameControllerProvider);
+    expect(afterPair.moveHistory.take(2), ['e2e4', 'e7e5']);
+    expect(afterPair.canUndo, isTrue);
+    expect(afterPair.canRedo, isFalse);
+
+    controller.undoTurn();
+    await Future<void>.delayed(Duration.zero);
+
+    final undone = container.read(gameControllerProvider);
+    expect(undone.moveHistory, isEmpty);
+    expect(undone.playerTurn, isTrue);
+    expect(undone.canRedo, isTrue);
+
+    controller.redoTurn();
+    await Future<void>.delayed(Duration.zero);
+
+    final redone = container.read(gameControllerProvider);
+    expect(redone.moveHistory.take(2), ['e2e4', 'e7e5']);
+    expect(redone.canUndo, isTrue);
+    expect(redone.canRedo, isFalse);
+  });
+
+  test('playing after undo clears redo branch', () async {
+    final stockfish = _FakeStockfishService();
+    final container = _container(stockfish: stockfish);
+    addTearDown(container.dispose);
+
+    final controller = container.read(gameControllerProvider.notifier);
+    stockfish.completeNextHardware(_hardwareProfile());
+    await controller.startNewGame(
+      config: GameSessionConfig.defaults().copyWith(hintMode: HintMode.off),
+    );
+
+    final firstMove = controller.dropMove(Square.e2, Square.e4);
+    await Future<void>.delayed(Duration.zero);
+    stockfish.completeNextAnalysis(multiPv: 1, bestMove: 'e7e5');
+    await firstMove;
+    await Future<void>.delayed(Duration.zero);
+
+    controller.undoTurn();
+    await Future<void>.delayed(Duration.zero);
+    expect(container.read(gameControllerProvider).canRedo, isTrue);
+
+    final branchMove = controller.dropMove(Square.d2, Square.d4);
+    await Future<void>.delayed(Duration.zero);
+    stockfish.completeNextAnalysis(multiPv: 1, bestMove: 'd7d5');
+    await branchMove;
+    await Future<void>.delayed(Duration.zero);
+
+    final branched = container.read(gameControllerProvider);
+    expect(branched.moveHistory.take(2), ['d2d4', 'd7d5']);
+    expect(branched.moveHistory, isNot(contains('e7e5')));
+    expect(branched.canRedo, isFalse);
   });
 }
 

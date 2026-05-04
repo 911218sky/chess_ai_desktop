@@ -63,13 +63,18 @@ class CoachTab extends StatelessWidget {
           ControlSectionBand(
             title: strings.personality,
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                LabeledDropdown<Persona>(
+                ControlDataLine(
                   label: strings.opponentAttitude,
-                  value: state.config.persona,
-                  items: Persona.values,
-                  itemLabel: (item) => item.localizedLabel(strings),
-                  onChanged: onPersonaChanged,
+                  value: state.config.persona.localizedLabel(strings),
+                ),
+                Text(
+                  state.config.persona.localizedDescription(strings),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Colors.white60,
+                    height: 1.3,
+                  ),
                 ),
                 const SizedBox(height: 14),
                 LabeledDropdown<CoachPersona>(

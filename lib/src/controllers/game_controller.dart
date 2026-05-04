@@ -35,6 +35,8 @@ class GameController extends Notifier<GameState> {
   Timer? _clockTimer;
   Timer? _idleBanterTimer;
   final math.Random _random = math.Random();
+  final List<_GameTimelineSnapshot> _timeline = [];
+  int _timelineIndex = -1;
   int _sessionId = 0;
   int _hintRequestId = 0;
   int _reviewRequestId = 0;
@@ -83,6 +85,7 @@ class GameController extends Notifier<GameState> {
         position: Position.initialPosition(Rule.chess),
         config: sessionConfig,
         aiThinking: false,
+        coachThinking: false,
       ),
       opponentMessage: _openingLine(sessionConfig),
       coachMessage: _coachOpeningLine(sessionConfig),
@@ -97,6 +100,9 @@ class GameController extends Notifier<GameState> {
       opponentAnalysis: null,
       errorMessage: null,
       lastLlmError: null,
+      coachThinking: false,
+      canUndo: false,
+      canRedo: false,
     );
     _restartClockTimer();
     _scheduleIdleBanter(sessionId: sessionId);
@@ -109,6 +115,7 @@ class GameController extends Notifier<GameState> {
     if (!_isCurrentSession(sessionId)) {
       return;
     }
+    _recordStableSnapshot(reset: true);
     unawaited(_settingsStore.savePreferences(sessionConfig));
     unawaited(
       _refreshOpeningLlmVoices(config: sessionConfig, sessionId: sessionId),
@@ -210,6 +217,7 @@ class GameController extends Notifier<GameState> {
         position: state.position,
         config: config,
         aiThinking: state.aiThinking,
+        coachThinking: state.coachThinking,
       ),
       opponentMessage: _openingLine(config),
       coachMessage: _coachLine(state.hint, config: config),
@@ -252,11 +260,10 @@ class GameController extends Notifier<GameState> {
   }
 
   void updateTauntLevel(TauntLevel tauntLevel) {
-    state = state.copyWith(
-      config: state.config.copyWith(tauntLevel: tauntLevel),
-      opponentAnalysis: null,
-    );
-    unawaited(_settingsStore.savePreferences(state.config));
+    final config = state.config.copyWith(tauntLevel: tauntLevel);
+    state = state.copyWith(config: config, opponentAnalysis: null);
+    _syncCurrentSnapshot();
+    unawaited(_settingsStore.savePreferences(config));
   }
 
   Future<void> resetPreferences() async {
@@ -289,8 +296,28 @@ class GameController extends Notifier<GameState> {
     _scheduleIdleBanter(sessionId: _sessionId);
   }
 
+  void updateLlmProviderKind(LlmProviderKind providerKind) {
+    final current = state.config.llm;
+    final llm = current.copyWith(
+      providerKind: providerKind,
+      provider: providerKind.defaultProviderLabel,
+      baseUrl: providerKind.defaultBaseUrl,
+      model: providerKind.defaultModel,
+    );
+    state = state.copyWith(
+      config: state.config.copyWith(llm: llm),
+      availableLlmModels: const [],
+      llmStatusMessage: null,
+      lastLlmError: null,
+    );
+    unawaited(_settingsStore.saveLlmSettings(llm));
+  }
+
   void updateLlmProvider(String provider) {
-    final llm = state.config.llm.copyWith(provider: provider);
+    final llm = state.config.llm.copyWith(
+      providerKind: LlmProviderKind.customCompatible,
+      provider: provider,
+    );
     state = state.copyWith(config: state.config.copyWith(llm: llm));
     unawaited(_settingsStore.saveLlmSettings(llm));
   }
@@ -338,6 +365,20 @@ class GameController extends Notifier<GameState> {
     state = state.copyWith(llmStats: const LlmUsageStats());
   }
 
+  void undoTurn() {
+    if (state.aiThinking || _timelineIndex <= 0) {
+      return;
+    }
+    _restoreTimelineSnapshot(_timelineIndex - 1);
+  }
+
+  void redoTurn() {
+    if (state.aiThinking || _timelineIndex >= _timeline.length - 1) {
+      return;
+    }
+    _restoreTimelineSnapshot(_timelineIndex + 1);
+  }
+
   bool _isCurrentSession(int sessionId) => sessionId == _sessionId;
 
   bool _isCurrentPositionRequest({
@@ -348,6 +389,111 @@ class GameController extends Notifier<GameState> {
     return _isCurrentSession(sessionId) &&
         state.position.fen == fen &&
         (config == null || state.config == config);
+  }
+
+  void _recordStableSnapshot({required bool reset}) {
+    if (!state.initialized || (!state.playerTurn && !state.isGameOver)) {
+      return;
+    }
+
+    final snapshot = _GameTimelineSnapshot.fromState(state);
+    if (reset) {
+      _timeline
+        ..clear()
+        ..add(snapshot);
+      _timelineIndex = 0;
+      _syncTimelineAvailability();
+      return;
+    }
+
+    if (_timelineIndex >= 0 &&
+        _timelineIndex < _timeline.length &&
+        _timeline[_timelineIndex].position.fen == snapshot.position.fen &&
+        _timeline[_timelineIndex].moveHistory.length ==
+            snapshot.moveHistory.length) {
+      _timeline[_timelineIndex] = snapshot;
+      _syncTimelineAvailability();
+      return;
+    }
+
+    if (_timelineIndex < _timeline.length - 1) {
+      _timeline.removeRange(_timelineIndex + 1, _timeline.length);
+    }
+    _timeline.add(snapshot);
+    _timelineIndex = _timeline.length - 1;
+    _syncTimelineAvailability();
+  }
+
+  void _syncCurrentSnapshot() {
+    if (_timelineIndex < 0 || _timelineIndex >= _timeline.length) {
+      return;
+    }
+    _timeline[_timelineIndex] = _GameTimelineSnapshot.fromState(state);
+    _syncTimelineAvailability();
+  }
+
+  void _syncTimelineAvailability() {
+    state = state.copyWith(
+      canUndo: _timelineIndex > 0,
+      canRedo: _timelineIndex >= 0 && _timelineIndex < _timeline.length - 1,
+    );
+  }
+
+  void _restoreTimelineSnapshot(int targetIndex) {
+    if (targetIndex < 0 || targetIndex >= _timeline.length) {
+      return;
+    }
+
+    final snapshot = _timeline[targetIndex];
+    final config = state.config;
+    final sessionId = ++_sessionId;
+    _hintRequestId++;
+    _reviewRequestId++;
+    _llmVoiceRequestId++;
+    _idleBanterTimer?.cancel();
+
+    state = state.copyWith(
+      position: snapshot.position,
+      aiThinking: false,
+      coachThinking: false,
+      selectedSquare: null,
+      legalTargets: const {},
+      hint: null,
+      opponentAnalysis: null,
+      latestReview: snapshot.latestReview,
+      reviewHistory: snapshot.reviewHistory,
+      whiteClockMs: snapshot.whiteClockMs,
+      blackClockMs: snapshot.blackClockMs,
+      lastClockStartedAt:
+          snapshot.position.isGameOver || snapshot.timeoutWinner != null
+          ? null
+          : DateTime.now(),
+      timeoutWinner: snapshot.timeoutWinner,
+      statusText: _statusFor(
+        position: snapshot.position,
+        config: config,
+        aiThinking: false,
+        coachThinking: false,
+        timeoutWinner: snapshot.timeoutWinner,
+      ),
+      opponentMessage: snapshot.opponentMessage,
+      coachMessage: snapshot.coachMessage,
+      opponentMessageSource: snapshot.opponentMessageSource,
+      coachMessageSource: snapshot.coachMessageSource,
+      eventLog: snapshot.eventLog,
+      moveHistory: snapshot.moveHistory,
+      lastMove: snapshot.lastMove,
+      errorMessage: null,
+      lastLlmError: null,
+      llmStatusMessage: null,
+    );
+    _timelineIndex = targetIndex;
+    _syncTimelineAvailability();
+    _restartClockTimer();
+    _scheduleIdleBanter(sessionId: sessionId);
+    if (state.playerTurn && !state.isGameOver) {
+      unawaited(_refreshHint(sessionId: sessionId));
+    }
   }
 
   Future<void> resetLlmSettings() async {
@@ -640,6 +786,7 @@ class GameController extends Notifier<GameState> {
       latestReview: review,
       reviewHistory: [...state.reviewHistory, review],
     );
+    _syncCurrentSnapshot();
   }
 
   Future<EngineAnalysis?> _analyzeQuietly(
@@ -663,6 +810,7 @@ class GameController extends Notifier<GameState> {
     final settings = _opponentEngineSettings(config);
     state = state.copyWith(
       aiThinking: true,
+      coachThinking: false,
       selectedSquare: null,
       legalTargets: const {},
       hint: null,
@@ -744,10 +892,12 @@ class GameController extends Notifier<GameState> {
       state = state.copyWith(
         hint: null,
         opponentAnalysis: null,
+        coachThinking: false,
         statusText: _statusFor(
           position: state.position,
           config: state.config,
           aiThinking: state.aiThinking,
+          coachThinking: false,
         ),
       );
       return;
@@ -759,6 +909,14 @@ class GameController extends Notifier<GameState> {
         ? state.config.candidateLineCount
         : 1;
     final settings = _teacherEngineSettings(config, multiPv: requestedMultiPv);
+    state = state.copyWith(
+      coachThinking: true,
+      coachMessage: AppStrings.of(config.locale).coachThinking,
+      coachMessageSource: config.llm.enabled
+          ? DialogueMessageSource.fallback
+          : DialogueMessageSource.disabled,
+      errorMessage: null,
+    );
 
     try {
       final analysis = await _stockfish.analyze(fen: fen, settings: settings);
@@ -775,6 +933,7 @@ class GameController extends Notifier<GameState> {
       state = state.copyWith(
         hint: analysis,
         opponentAnalysis: null,
+        coachThinking: false,
         coachMessage: _coachLine(analysis),
         coachMessageSource: state.config.llm.enabled
             ? DialogueMessageSource.fallback
@@ -783,9 +942,11 @@ class GameController extends Notifier<GameState> {
           position: state.position,
           config: state.config,
           aiThinking: false,
+          coachThinking: false,
         ),
         errorMessage: null,
       );
+      _syncCurrentSnapshot();
       unawaited(
         _refreshCoachVoice(
           analysis: analysis,
@@ -806,6 +967,7 @@ class GameController extends Notifier<GameState> {
       state = state.copyWith(
         hint: null,
         opponentAnalysis: null,
+        coachThinking: false,
         errorMessage: AppStrings.of(
           state.config.locale,
         ).hintAnalysisFailed(error),
@@ -856,6 +1018,7 @@ class GameController extends Notifier<GameState> {
     state = state.copyWith(
       position: position,
       aiThinking: false,
+      coachThinking: false,
       selectedSquare: null,
       legalTargets: const {},
       hint: null,
@@ -880,10 +1043,15 @@ class GameController extends Notifier<GameState> {
         position: position,
         config: state.config,
         aiThinking: false,
+        coachThinking: false,
       ),
       errorMessage: null,
       lastLlmError: null,
     );
+
+    if (state.playerTurn || state.isGameOver) {
+      _recordStableSnapshot(reset: false);
+    }
 
     final sessionId = _sessionId;
     final fen = state.position.fen;
@@ -962,6 +1130,7 @@ class GameController extends Notifier<GameState> {
               position: state.position,
               config: state.config,
               aiThinking: false,
+              coachThinking: false,
               timeoutWinner: timeoutWinner,
             )
           : state.statusText,
@@ -1758,6 +1927,7 @@ class GameController extends Notifier<GameState> {
     required Position position,
     required GameSessionConfig config,
     required bool aiThinking,
+    required bool coachThinking,
     Side? timeoutWinner,
   }) {
     final strings = AppStrings.of(config.locale);
@@ -1778,6 +1948,14 @@ class GameController extends Notifier<GameState> {
     }
     if (aiThinking) {
       return strings.aiThinking;
+    }
+    if (coachThinking) {
+      return strings.coachThinking;
+    }
+    if (position.isCheck) {
+      return position.turn == config.playerSide
+          ? strings.playerInCheck
+          : strings.aiInCheck;
     }
     return position.turn == config.playerSide
         ? strings.yourTurn(strings.sideName(config.playerSide.name))
@@ -2202,4 +2380,54 @@ class GameController extends Notifier<GameState> {
       AppLocale.zhHant => '結果：AI 拿下這一分。',
     };
   }
+}
+
+class _GameTimelineSnapshot {
+  const _GameTimelineSnapshot({
+    required this.position,
+    required this.latestReview,
+    required this.reviewHistory,
+    required this.whiteClockMs,
+    required this.blackClockMs,
+    required this.timeoutWinner,
+    required this.opponentMessage,
+    required this.coachMessage,
+    required this.opponentMessageSource,
+    required this.coachMessageSource,
+    required this.eventLog,
+    required this.moveHistory,
+    required this.lastMove,
+  });
+
+  factory _GameTimelineSnapshot.fromState(GameState state) {
+    return _GameTimelineSnapshot(
+      position: state.position,
+      latestReview: state.latestReview,
+      reviewHistory: state.reviewHistory,
+      whiteClockMs: state.whiteClockMs,
+      blackClockMs: state.blackClockMs,
+      timeoutWinner: state.timeoutWinner,
+      opponentMessage: state.opponentMessage,
+      coachMessage: state.coachMessage,
+      opponentMessageSource: state.opponentMessageSource,
+      coachMessageSource: state.coachMessageSource,
+      eventLog: state.eventLog,
+      moveHistory: state.moveHistory,
+      lastMove: state.lastMove,
+    );
+  }
+
+  final Position position;
+  final MoveReview? latestReview;
+  final List<MoveReview> reviewHistory;
+  final int? whiteClockMs;
+  final int? blackClockMs;
+  final Side? timeoutWinner;
+  final String opponentMessage;
+  final String coachMessage;
+  final DialogueMessageSource opponentMessageSource;
+  final DialogueMessageSource coachMessageSource;
+  final List<String> eventLog;
+  final List<String> moveHistory;
+  final LastMove? lastMove;
 }

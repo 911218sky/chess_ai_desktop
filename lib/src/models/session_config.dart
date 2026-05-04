@@ -322,6 +322,37 @@ enum Persona {
       Persona.royalVillain => '王室反派',
     },
   };
+
+  String localizedDescription(AppStrings strings) => switch (strings.locale) {
+    AppLocale.en => switch (this) {
+      Persona.coldMaster =>
+        'Precise pressure, clean threats, and almost no wasted words.',
+      Persona.trashTalker =>
+        'Playful banter, direct challenge, and lively table talk.',
+      Persona.coach =>
+        'Sparring-partner energy that hints at plans while still competing.',
+      Persona.gentleman =>
+        'Respectful, poised, and quietly confident match-room vibes.',
+      Persona.trickster =>
+        'Trap-setting, feints, and ambiguous pressure around the board.',
+      Persona.speedDemon =>
+        'Fast tempo, sharp pressure, and impatient attacking energy.',
+      Persona.endgameGrinder =>
+        'Small edges, technical squeeze, and relentless conversion pressure.',
+      Persona.royalVillain =>
+        'Grand, theatrical, elegant, and slightly intimidating presence.',
+    },
+    AppLocale.zhHant => switch (this) {
+      Persona.coldMaster => '精準施壓、威脅乾淨、話少但壓迫感很重。',
+      Persona.trashTalker => '會嘴砲、挑釁感強，對局氣氛更熱鬧。',
+      Persona.coach => '像陪練一樣會點出計畫，但本質上仍是對手。',
+      Persona.gentleman => '尊重對手、沉著自信，偏正式比賽感。',
+      Persona.trickster => '喜歡陷阱、假動作與模糊威脅的風格。',
+      Persona.speedDemon => '節奏很快、攻擊銳利，會逼你快做決定。',
+      Persona.endgameGrinder => '擅長磨小優勢，用技術慢慢把你壓垮。',
+      Persona.royalVillain => '戲劇化、優雅又有壓迫感，像 Boss 戰。',
+    },
+  };
 }
 
 enum CoachPersona {
@@ -404,8 +435,112 @@ enum TauntLevel {
   };
 }
 
+enum LlmProviderKind {
+  openAiCompatible,
+  googleGemini,
+  anthropicClaude,
+  customCompatible;
+
+  String localizedLabel(AppStrings strings) => switch (strings.locale) {
+    AppLocale.en => switch (this) {
+      LlmProviderKind.openAiCompatible => 'OpenAI Compatible',
+      LlmProviderKind.googleGemini => 'Google Gemini',
+      LlmProviderKind.anthropicClaude => 'Anthropic Claude',
+      LlmProviderKind.customCompatible => 'Custom Compatible',
+    },
+    AppLocale.zhHant => switch (this) {
+      LlmProviderKind.openAiCompatible => 'OpenAI 相容',
+      LlmProviderKind.googleGemini => 'Google Gemini',
+      LlmProviderKind.anthropicClaude => 'Anthropic Claude',
+      LlmProviderKind.customCompatible => '自訂相容服務',
+    },
+  };
+
+  String localizedDescription(AppStrings strings) => switch (strings.locale) {
+    AppLocale.en => switch (this) {
+      LlmProviderKind.openAiCompatible =>
+        'Use OpenAI-compatible chat and model endpoints.',
+      LlmProviderKind.googleGemini =>
+        'Gemini through Google\'s OpenAI-compatible endpoint preset.',
+      LlmProviderKind.anthropicClaude =>
+        'Claude through Anthropic\'s native models and messages APIs.',
+      LlmProviderKind.customCompatible =>
+        'Bring your own compatible gateway and custom base URL.',
+    },
+    AppLocale.zhHant => switch (this) {
+      LlmProviderKind.openAiCompatible => '使用 OpenAI 相容的聊天與模型端點。',
+      LlmProviderKind.googleGemini => '使用 Google 官方 Gemini OpenAI 相容端點預設。',
+      LlmProviderKind.anthropicClaude =>
+        '使用 Anthropic 官方 Claude models 與 messages API。',
+      LlmProviderKind.customCompatible => '自訂相容服務，可手動填寫服務名稱與 Base URL。',
+    },
+  };
+
+  String get defaultProviderLabel => switch (this) {
+    LlmProviderKind.openAiCompatible => 'OpenAI Compatible',
+    LlmProviderKind.googleGemini => 'Google Gemini',
+    LlmProviderKind.anthropicClaude => 'Anthropic Claude',
+    LlmProviderKind.customCompatible => 'Custom Gateway',
+  };
+
+  String get defaultBaseUrl => switch (this) {
+    LlmProviderKind.openAiCompatible => 'https://api.openai.com/v1',
+    LlmProviderKind.googleGemini =>
+      'https://generativelanguage.googleapis.com/v1beta/openai',
+    LlmProviderKind.anthropicClaude => 'https://api.anthropic.com/v1',
+    LlmProviderKind.customCompatible => 'https://api.openai.com/v1',
+  };
+
+  String get defaultModel => switch (this) {
+    LlmProviderKind.openAiCompatible => 'gpt-5.5',
+    LlmProviderKind.googleGemini => 'gemini-2.5-flash',
+    LlmProviderKind.anthropicClaude => 'claude-sonnet-4-0',
+    LlmProviderKind.customCompatible => 'gpt-5.5',
+  };
+
+  String get apiKeyHint => switch (this) {
+    LlmProviderKind.openAiCompatible => 'OPENAI_API_KEY',
+    LlmProviderKind.googleGemini => 'GEMINI_API_KEY',
+    LlmProviderKind.anthropicClaude => 'ANTHROPIC_API_KEY',
+    LlmProviderKind.customCompatible => 'YOUR_PROVIDER_API_KEY',
+  };
+
+  bool get usesAnthropicApi => this == LlmProviderKind.anthropicClaude;
+
+  static LlmProviderKind infer({
+    required Object? savedKind,
+    required Object? savedProvider,
+    required Object? savedBaseUrl,
+  }) {
+    final explicit = _enumByName(
+      LlmProviderKind.values,
+      savedKind,
+      LlmProviderKind.openAiCompatible,
+    );
+    if (savedKind is String) {
+      return explicit;
+    }
+
+    final provider = savedProvider is String ? savedProvider.toLowerCase() : '';
+    final baseUrl = savedBaseUrl is String ? savedBaseUrl.toLowerCase() : '';
+    if (provider.contains('gemini') || baseUrl.contains('generativelanguage')) {
+      return LlmProviderKind.googleGemini;
+    }
+    if (provider.contains('claude') ||
+        provider.contains('anthropic') ||
+        baseUrl.contains('anthropic')) {
+      return LlmProviderKind.anthropicClaude;
+    }
+    if (provider.contains('custom')) {
+      return LlmProviderKind.customCompatible;
+    }
+    return LlmProviderKind.openAiCompatible;
+  }
+}
+
 class LlmSettings {
   const LlmSettings({
+    this.providerKind = LlmProviderKind.openAiCompatible,
     this.enabled = false,
     this.provider = 'OpenAI Compatible',
     this.baseUrl = 'https://api.openai.com/v1',
@@ -416,6 +551,7 @@ class LlmSettings {
     this.idleBanterMaxSeconds = 45,
   });
 
+  final LlmProviderKind providerKind;
   final bool enabled;
   final String provider;
   final String baseUrl;
@@ -426,6 +562,7 @@ class LlmSettings {
   final int idleBanterMaxSeconds;
 
   LlmSettings copyWith({
+    LlmProviderKind? providerKind,
     bool? enabled,
     String? provider,
     String? baseUrl,
@@ -438,6 +575,7 @@ class LlmSettings {
     final minSeconds = idleBanterMinSeconds ?? this.idleBanterMinSeconds;
     final maxSeconds = idleBanterMaxSeconds ?? this.idleBanterMaxSeconds;
     return LlmSettings(
+      providerKind: providerKind ?? this.providerKind,
       enabled: enabled ?? this.enabled,
       provider: provider ?? this.provider,
       baseUrl: baseUrl ?? this.baseUrl,
@@ -453,6 +591,11 @@ class LlmSettings {
   }
 
   factory LlmSettings.fromJson(Map<String, Object?> json) {
+    final providerKind = LlmProviderKind.infer(
+      savedKind: json['providerKind'],
+      savedProvider: json['provider'],
+      savedBaseUrl: json['baseUrl'],
+    );
     final idleMinSeconds = _clampInt(
       json['idleBanterMinSeconds'],
       const LlmSettings().idleBanterMinSeconds,
@@ -469,18 +612,19 @@ class LlmSettings {
       ),
     );
     return LlmSettings(
+      providerKind: providerKind,
       enabled: json['enabled'] == true,
       provider: switch (json['provider']) {
         final String value when value.trim().isNotEmpty => value,
-        _ => const LlmSettings().provider,
+        _ => providerKind.defaultProviderLabel,
       },
       baseUrl: switch (json['baseUrl']) {
         final String value when value.trim().isNotEmpty => value,
-        _ => const LlmSettings().baseUrl,
+        _ => providerKind.defaultBaseUrl,
       },
       model: switch (json['model']) {
         final String value when value.trim().isNotEmpty => value,
-        _ => const LlmSettings().model,
+        _ => providerKind.defaultModel,
       },
       apiKey: switch (json['apiKey']) {
         final String value => value,
@@ -496,6 +640,7 @@ class LlmSettings {
 
   Map<String, Object?> toJson() {
     return {
+      'providerKind': providerKind.name,
       'enabled': enabled,
       'provider': provider,
       'baseUrl': baseUrl,

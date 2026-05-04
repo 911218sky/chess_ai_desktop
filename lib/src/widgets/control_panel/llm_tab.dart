@@ -13,6 +13,7 @@ class LlmTab extends StatefulWidget {
     super.key,
     required this.state,
     required this.onLlmEnabledChanged,
+    required this.onLlmProviderKindChanged,
     required this.onPersonaChanged,
     required this.onCoachPersonaChanged,
     required this.onLlmProviderChanged,
@@ -30,6 +31,7 @@ class LlmTab extends StatefulWidget {
 
   final GameState state;
   final ValueChanged<bool> onLlmEnabledChanged;
+  final ValueChanged<LlmProviderKind> onLlmProviderKindChanged;
   final ValueChanged<Persona> onPersonaChanged;
   final ValueChanged<CoachPersona> onCoachPersonaChanged;
   final ValueChanged<String> onLlmProviderChanged;
@@ -123,24 +125,22 @@ class _LlmTabState extends State<LlmTab> {
                   onChanged: widget.onLlmEnabledChanged,
                 ),
                 const SizedBox(height: 8),
-                LabeledDropdown<Persona>(
-                  label: strings.opponentAttitude,
-                  value: state.config.persona,
-                  items: Persona.values,
-                  itemLabel: (item) => item.localizedLabel(strings),
-                  onChanged: widget.onPersonaChanged,
+                _ProviderPresetSection(
+                  settings: state.config.llm,
+                  strings: strings,
+                  onChanged: widget.onLlmProviderKindChanged,
                 ),
                 const SizedBox(height: 14),
-                LabeledDropdown<CoachPersona>(
-                  label: strings.teacherVoice,
-                  value: state.config.coachPersona,
-                  items: CoachPersona.values,
-                  itemLabel: (item) => item.localizedLabel(strings),
-                  onChanged: widget.onCoachPersonaChanged,
+                Text(
+                  strings.providerSettingsDescription,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Colors.white60,
+                    height: 1.3,
+                  ),
                 ),
                 const SizedBox(height: 14),
                 LabeledTextField(
-                  label: strings.provider,
+                  label: strings.providerName,
                   controller: _providerController,
                   onChanged: widget.onLlmProviderChanged,
                 ),
@@ -177,6 +177,9 @@ class _LlmTabState extends State<LlmTab> {
                   controller: _apiKeyController,
                   obscureText: true,
                   onChanged: widget.onLlmApiKeyChanged,
+                  hintText: strings.apiKeyHint(
+                    state.config.llm.providerKind.apiKeyHint,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Row(
@@ -269,6 +272,178 @@ class _LlmTabState extends State<LlmTab> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ProviderPresetSection extends StatelessWidget {
+  const _ProviderPresetSection({
+    required this.settings,
+    required this.strings,
+    required this.onChanged,
+  });
+
+  final LlmSettings settings;
+  final AppStrings strings;
+  final ValueChanged<LlmProviderKind> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          strings.providerPreset,
+          style: Theme.of(
+            context,
+          ).textTheme.labelLarge?.copyWith(color: Colors.white70),
+        ),
+        const SizedBox(height: 8),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = constraints.maxWidth >= 430 ? 2 : 1;
+            const spacing = 10.0;
+            const cardHeight = 104.0;
+            final cardWidth =
+                (constraints.maxWidth - (spacing * (columns - 1))) / columns;
+
+            return GridView.count(
+              crossAxisCount: columns,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              mainAxisSpacing: spacing,
+              crossAxisSpacing: spacing,
+              childAspectRatio: cardWidth / cardHeight,
+              children: [
+                for (final provider in LlmProviderKind.values)
+                  _ProviderCard(
+                    provider: provider,
+                    strings: strings,
+                    selected: settings.providerKind == provider,
+                    onTap: () => onChanged(provider),
+                  ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _ProviderCard extends StatelessWidget {
+  const _ProviderCard({
+    required this.provider,
+    required this.strings,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final LlmProviderKind provider;
+  final AppStrings strings;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (provider) {
+      LlmProviderKind.openAiCompatible => const Color(0xFF7CE3C8),
+      LlmProviderKind.googleGemini => const Color(0xFF8CB7FF),
+      LlmProviderKind.anthropicClaude => const Color(0xFFFFC66D),
+      LlmProviderKind.customCompatible => const Color(0xFFC79BFF),
+    };
+    final icon = switch (provider) {
+      LlmProviderKind.openAiCompatible => Icons.cloud_rounded,
+      LlmProviderKind.googleGemini => Icons.auto_awesome_rounded,
+      LlmProviderKind.anthropicClaude => Icons.psychology_rounded,
+      LlmProviderKind.customCompatible => Icons.tune_rounded,
+    };
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: selected
+              ? color.withValues(alpha: 0.16)
+              : Colors.white.withValues(alpha: 0.045),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? color.withValues(alpha: 0.72) : Colors.white12,
+            width: selected ? 1.5 : 1,
+          ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.12),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: selected ? 0.24 : 0.14),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: color.withValues(alpha: 0.28)),
+              ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          provider.localizedLabel(strings),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                height: 1.05,
+                              ),
+                        ),
+                      ),
+                      if (selected) ...[
+                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.check_circle_rounded,
+                          color: color,
+                          size: 18,
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    provider.localizedDescription(strings),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.white70,
+                      height: 1.25,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

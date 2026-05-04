@@ -55,6 +55,11 @@ class AppStrings {
     AppLocale.zhHant => '開始',
   };
 
+  String get restart => switch (locale) {
+    AppLocale.en => 'Restart',
+    AppLocale.zhHant => '重新開始',
+  };
+
   String get thinking => switch (locale) {
     AppLocale.en => 'Thinking...',
     AppLocale.zhHant => '思考中...',
@@ -173,6 +178,16 @@ class AppStrings {
   String get rematch => switch (locale) {
     AppLocale.en => 'Rematch',
     AppLocale.zhHant => '重開',
+  };
+
+  String get undoMove => switch (locale) {
+    AppLocale.en => 'Undo turn',
+    AppLocale.zhHant => '回退一步',
+  };
+
+  String get redoMove => switch (locale) {
+    AppLocale.en => 'Redo turn',
+    AppLocale.zhHant => '往前一步',
   };
 
   String get close => switch (locale) {
@@ -374,6 +389,12 @@ class AppStrings {
     AppLocale.zhHant => '個性',
   };
 
+  String get personalityDescription => switch (locale) {
+    AppLocale.en =>
+      'Pick an opponent mood that fits the character and changes the match vibe.',
+    AppLocale.zhHant => '選擇和角色搭配的對手人格，讓整盤對局氣質更清楚。',
+  };
+
   String get opponentAttitude => switch (locale) {
     AppLocale.en => 'Opponent Role',
     AppLocale.zhHant => '對手角色',
@@ -409,6 +430,22 @@ class AppStrings {
     AppLocale.zhHant => '服務商',
   };
 
+  String get providerPreset => switch (locale) {
+    AppLocale.en => 'Provider Preset',
+    AppLocale.zhHant => '服務商預設',
+  };
+
+  String get providerName => switch (locale) {
+    AppLocale.en => 'Provider Name',
+    AppLocale.zhHant => '服務名稱',
+  };
+
+  String get providerSettingsDescription => switch (locale) {
+    AppLocale.en =>
+      'Choose a preset first, then adjust the base URL or model if needed.',
+    AppLocale.zhHant => '先選服務商預設，再視需要調整 Base URL 或模型。',
+  };
+
   String get baseUrl => switch (locale) {
     AppLocale.en => 'Base URL',
     AppLocale.zhHant => 'Base URL',
@@ -427,6 +464,11 @@ class AppStrings {
   String get apiKey => switch (locale) {
     AppLocale.en => 'API Key',
     AppLocale.zhHant => 'API Key',
+  };
+
+  String apiKeyHint(String envName) => switch (locale) {
+    AppLocale.en => 'Common env var: $envName',
+    AppLocale.zhHant => '常用環境變數：$envName',
   };
 
   String get test => switch (locale) {
@@ -614,6 +656,21 @@ class AppStrings {
   String get aiThinking => switch (locale) {
     AppLocale.en => 'AI is thinking...',
     AppLocale.zhHant => 'AI 正在思考...',
+  };
+
+  String get coachThinking => switch (locale) {
+    AppLocale.en => 'Teacher is analyzing...',
+    AppLocale.zhHant => '老師正在分析...',
+  };
+
+  String get playerInCheck => switch (locale) {
+    AppLocale.en => 'You are in check. Defend your king first.',
+    AppLocale.zhHant => '你被將軍了，必須先解將。',
+  };
+
+  String get aiInCheck => switch (locale) {
+    AppLocale.en => 'AI is in check.',
+    AppLocale.zhHant => '對手被將軍。',
   };
 
   String get aiMoveFailed => switch (locale) {

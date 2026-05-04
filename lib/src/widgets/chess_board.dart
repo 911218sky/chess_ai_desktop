@@ -57,8 +57,11 @@ class ChessBoard extends StatefulWidget {
 class _ChessBoardState extends State<ChessBoard> {
   late String _positionSignature;
   late Map<Square, Set<Square>> _acceptedDragSources;
+  late Set<Square> _actionableSquares;
   late Square? _losingKingSquare;
+  late Square? _checkedKingSquare;
   String? _losingKingSignature;
+  String? _checkedKingSignature;
   List<EngineLine>? _hintLinesIdentity;
   List<_HintOverlayMove> _hintMoves = const [];
   String _hintMovesSignature = '';
@@ -67,8 +70,9 @@ class _ChessBoardState extends State<ChessBoard> {
   void initState() {
     super.initState();
     _positionSignature = widget.position.fen;
-    _acceptedDragSources = _acceptedDragSourcesFor(widget.position);
+    _syncLegalMoveCaches();
     _syncLosingKingSquare();
+    _syncCheckedKingSquare();
     _syncHintMoves();
   }
 
@@ -78,10 +82,12 @@ class _ChessBoardState extends State<ChessBoard> {
     final nextPositionSignature = widget.position.fen;
     if (_positionSignature != nextPositionSignature) {
       _positionSignature = nextPositionSignature;
-      _acceptedDragSources = _acceptedDragSourcesFor(widget.position);
+      _syncLegalMoveCaches();
       _losingKingSignature = null;
+      _checkedKingSignature = null;
     }
     _syncLosingKingSquare();
+    _syncCheckedKingSquare();
     _syncHintMoves();
   }
 
@@ -126,6 +132,8 @@ class _ChessBoardState extends State<ChessBoard> {
                   resultDisplay: widget.resultDisplay,
                   losingSide: widget.losingSide,
                   losingKingSquare: _losingKingSquare,
+                  checkedKingSquare: _checkedKingSquare,
+                  actionableSquares: _actionableSquares,
                   acceptedDragSources: _acceptedDragSources,
                   theme: theme,
                   onSquareTap: widget.onSquareTap,
@@ -193,6 +201,16 @@ class _ChessBoardState extends State<ChessBoard> {
     );
   }
 
+  void _syncCheckedKingSquare() {
+    final signature =
+        '$_positionSignature|${widget.position.turn.name}|${widget.position.isCheck}';
+    if (_checkedKingSignature == signature) {
+      return;
+    }
+    _checkedKingSignature = signature;
+    _checkedKingSquare = _checkedKingSquareFor(widget.position);
+  }
+
   List<_HintOverlayMove> _hintMovesFromLines(List<EngineLine> lines) {
     final moves = <_HintOverlayMove>[];
     for (final line in lines) {
@@ -233,6 +251,22 @@ class _ChessBoardState extends State<ChessBoard> {
     return sourcesByTarget;
   }
 
+  Set<Square> _actionableSquaresFor(Position position) {
+    final actionable = <Square>{};
+    final legalMoves = makeLegalMoves(position);
+    for (final entry in legalMoves.entries) {
+      if (entry.value.isNotEmpty) {
+        actionable.add(entry.key);
+      }
+    }
+    return actionable;
+  }
+
+  void _syncLegalMoveCaches() {
+    _acceptedDragSources = _acceptedDragSourcesFor(widget.position);
+    _actionableSquares = _actionableSquaresFor(widget.position);
+  }
+
   Square? _losingKingSquareFor(Position position, Side? losingSide) {
     if (losingSide == null) {
       return null;
@@ -241,6 +275,20 @@ class _ChessBoardState extends State<ChessBoard> {
     for (final square in Square.values) {
       final current = board.pieceAt(square);
       if (current?.color == losingSide && current?.role == Role.king) {
+        return square;
+      }
+    }
+    return null;
+  }
+
+  Square? _checkedKingSquareFor(Position position) {
+    if (!position.isCheck) {
+      return null;
+    }
+    final board = position.board;
+    for (final square in Square.values) {
+      final current = board.pieceAt(square);
+      if (current?.color == position.turn && current?.role == Role.king) {
         return square;
       }
     }
@@ -259,6 +307,8 @@ class _BoardGridLayer extends StatelessWidget {
     required this.resultDisplay,
     required this.losingSide,
     required this.losingKingSquare,
+    required this.checkedKingSquare,
+    required this.actionableSquares,
     required this.acceptedDragSources,
     required this.theme,
     required this.onSquareTap,
@@ -274,6 +324,8 @@ class _BoardGridLayer extends StatelessWidget {
   final GameResultDisplay? resultDisplay;
   final Side? losingSide;
   final Square? losingKingSquare;
+  final Square? checkedKingSquare;
+  final Set<Square> actionableSquares;
   final Map<Square, Set<Square>> acceptedDragSources;
   final BoardThemeStyle theme;
   final Future<void> Function(Square square) onSquareTap;
@@ -297,15 +349,25 @@ class _BoardGridLayer extends StatelessWidget {
         final acceptedSources = acceptedDragSources[square] ?? const <Square>{};
         final isLastMove = square == lastMove?.from || square == lastMove?.to;
         final baseIsLight = (square.file + square.rank).isOdd;
+        final canRespondToCheck =
+            piece == null ||
+            piece.color != position.turn ||
+            !position.isCheck ||
+            actionableSquares.contains(square);
 
         return _SquareButton(
           resultKey: resultKey,
           resultDisplay: resultDisplay,
           losingSide: losingSide,
           losingKingSquare: losingKingSquare,
+          checkedKingSquare: checkedKingSquare,
           square: square,
           piece: piece,
-          draggable: piece != null && piece.color == position.turn,
+          draggable:
+              piece != null &&
+              piece.color == position.turn &&
+              canRespondToCheck,
+          canRespondToCheck: canRespondToCheck,
           isLight: baseIsLight,
           isSelected: isSelected,
           isTarget: isTarget,
@@ -689,9 +751,11 @@ class _SquareButton extends StatelessWidget {
     required this.resultDisplay,
     required this.losingSide,
     required this.losingKingSquare,
+    required this.checkedKingSquare,
     required this.square,
     required this.piece,
     required this.draggable,
+    required this.canRespondToCheck,
     required this.isLight,
     required this.isSelected,
     required this.isTarget,
@@ -708,9 +772,11 @@ class _SquareButton extends StatelessWidget {
   final GameResultDisplay? resultDisplay;
   final Side? losingSide;
   final Square? losingKingSquare;
+  final Square? checkedKingSquare;
   final Square square;
   final Piece? piece;
   final bool draggable;
+  final bool canRespondToCheck;
   final bool isLight;
   final bool isSelected;
   final bool isTarget;
@@ -727,6 +793,7 @@ class _SquareButton extends StatelessWidget {
     final baseColor = isLight ? theme.lightSquare : theme.darkSquare;
     final labelColor = isLight ? theme.labelOnLight : theme.labelOnDark;
     final isLosingKing = square == losingKingSquare;
+    final isCheckedKing = !isLosingKing && square == checkedKingSquare;
     final losingOverlay = isLosingKing
         ? BoxDecoration(
             gradient: RadialGradient(
@@ -742,6 +809,33 @@ class _SquareButton extends StatelessWidget {
             ),
           )
         : null;
+    final checkedOverlay = isCheckedKing
+        ? BoxDecoration(
+            gradient: RadialGradient(
+              colors: [
+                const Color(0xFFFF6B6B).withValues(alpha: 0.28),
+                const Color(0xFF7A1717).withValues(alpha: 0.12),
+                Colors.transparent,
+              ],
+            ),
+            border: Border.all(
+              color: const Color(0xFFFF8E8E).withValues(alpha: 0.88),
+              width: 2.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                blurRadius: 16,
+                spreadRadius: 1,
+                color: const Color(0xFFD52F2F).withValues(alpha: 0.20),
+              ),
+            ],
+          )
+        : null;
+    final dimmedForCheck =
+        piece != null && piece!.color == Side.white ||
+            piece?.color == Side.black
+        ? !canRespondToCheck
+        : false;
 
     return DragTarget<Square>(
       onWillAcceptWithDetails: (details) =>
@@ -752,7 +846,7 @@ class _SquareButton extends StatelessWidget {
         return Material(
           color: baseColor,
           child: InkWell(
-            onTap: onTap,
+            onTap: dimmedForCheck ? null : onTap,
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -810,6 +904,10 @@ class _SquareButton extends StatelessWidget {
                   Positioned.fill(
                     child: DecoratedBox(decoration: losingOverlay),
                   ),
+                if (checkedOverlay != null)
+                  Positioned.fill(
+                    child: DecoratedBox(decoration: checkedOverlay),
+                  ),
                 if (showRankLabel)
                   Positioned(
                     left: 6,
@@ -854,62 +952,66 @@ class _SquareButton extends StatelessWidget {
                   ),
                 if (piece != null)
                   Center(
-                    child: RepaintBoundary(
-                      child: _AnimatedBoardPiece(
-                        resultKey: resultKey,
-                        piece: piece!,
-                        resultDisplay: resultDisplay,
-                        losingSide: losingSide,
-                        isLosingKing: isLosingKing,
-                        child: FractionallySizedBox(
-                          widthFactor: 0.80,
-                          heightFactor: 0.80,
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              final pieceSize = math.min(
-                                constraints.maxWidth,
-                                constraints.maxHeight,
-                              );
-                              final feedbackSize = pieceDragVisualSize(
-                                pieceSize,
-                              );
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 160),
+                      opacity: dimmedForCheck ? 0.34 : 1,
+                      child: RepaintBoundary(
+                        child: _AnimatedBoardPiece(
+                          resultKey: resultKey,
+                          piece: piece!,
+                          resultDisplay: resultDisplay,
+                          losingSide: losingSide,
+                          isLosingKing: isLosingKing,
+                          child: FractionallySizedBox(
+                            widthFactor: 0.80,
+                            heightFactor: 0.80,
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final pieceSize = math.min(
+                                  constraints.maxWidth,
+                                  constraints.maxHeight,
+                                );
+                                final feedbackSize = pieceDragVisualSize(
+                                  pieceSize,
+                                );
 
-                              return draggable
-                                  ? Draggable<Square>(
-                                      data: square,
-                                      rootOverlay: true,
-                                      dragAnchorStrategy:
-                                          childDragAnchorStrategy,
-                                      feedbackOffset: pieceDragFeedbackOffset(
-                                        pieceSize,
-                                      ),
-                                      feedback: RepaintBoundary(
+                                return draggable
+                                    ? Draggable<Square>(
+                                        data: square,
+                                        rootOverlay: true,
+                                        dragAnchorStrategy:
+                                            childDragAnchorStrategy,
+                                        feedbackOffset: pieceDragFeedbackOffset(
+                                          pieceSize,
+                                        ),
+                                        feedback: RepaintBoundary(
+                                          child: SizedBox.square(
+                                            dimension: feedbackSize,
+                                            child: _ChessPieceAsset(
+                                              piece: piece!,
+                                              theme: theme,
+                                            ),
+                                          ),
+                                        ),
+                                        childWhenDragging:
+                                            const SizedBox.shrink(),
                                         child: SizedBox.square(
-                                          dimension: feedbackSize,
+                                          dimension: pieceSize,
                                           child: _ChessPieceAsset(
                                             piece: piece!,
                                             theme: theme,
                                           ),
                                         ),
-                                      ),
-                                      childWhenDragging:
-                                          const SizedBox.shrink(),
-                                      child: SizedBox.square(
+                                      )
+                                    : SizedBox.square(
                                         dimension: pieceSize,
                                         child: _ChessPieceAsset(
                                           piece: piece!,
                                           theme: theme,
                                         ),
-                                      ),
-                                    )
-                                  : SizedBox.square(
-                                      dimension: pieceSize,
-                                      child: _ChessPieceAsset(
-                                        piece: piece!,
-                                        theme: theme,
-                                      ),
-                                    );
-                            },
+                                      );
+                              },
+                            ),
                           ),
                         ),
                       ),

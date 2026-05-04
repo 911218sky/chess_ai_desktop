@@ -18,6 +18,7 @@ class GameState {
     required this.config,
     required this.initialized,
     required this.aiThinking,
+    required this.coachThinking,
     required this.selectedSquare,
     required Set<Square> legalTargets,
     required this.hint,
@@ -42,6 +43,8 @@ class GameState {
     required this.llmStats,
     required List<String> eventLog,
     required List<String> moveHistory,
+    required this.canUndo,
+    required this.canRedo,
     required this.lastMove,
     required this.errorMessage,
   }) : legalTargets = Set.unmodifiable(legalTargets),
@@ -58,6 +61,7 @@ class GameState {
       config: session,
       initialized: false,
       aiThinking: false,
+      coachThinking: false,
       selectedSquare: null,
       legalTargets: const {},
       hint: null,
@@ -88,6 +92,8 @@ class GameState {
       llmStats: const LlmUsageStats(),
       eventLog: const [],
       moveHistory: const [],
+      canUndo: false,
+      canRedo: false,
       lastMove: null,
       errorMessage: null,
     );
@@ -97,6 +103,7 @@ class GameState {
   final GameSessionConfig config;
   final bool initialized;
   final bool aiThinking;
+  final bool coachThinking;
   final Square? selectedSquare;
   final Set<Square> legalTargets;
   final EngineAnalysis? hint;
@@ -121,6 +128,8 @@ class GameState {
   final LlmUsageStats llmStats;
   final List<String> eventLog;
   final List<String> moveHistory;
+  final bool canUndo;
+  final bool canRedo;
   final LastMove? lastMove;
   final String? errorMessage;
 
@@ -140,6 +149,7 @@ class GameState {
     GameSessionConfig? config,
     bool? initialized,
     bool? aiThinking,
+    bool? coachThinking,
     Object? selectedSquare = _unset,
     Set<Square>? legalTargets,
     Object? hint = _unset,
@@ -164,6 +174,8 @@ class GameState {
     LlmUsageStats? llmStats,
     List<String>? eventLog,
     List<String>? moveHistory,
+    bool? canUndo,
+    bool? canRedo,
     Object? lastMove = _unset,
     Object? errorMessage = _unset,
   }) {
@@ -172,6 +184,7 @@ class GameState {
       config: config ?? this.config,
       initialized: initialized ?? this.initialized,
       aiThinking: aiThinking ?? this.aiThinking,
+      coachThinking: coachThinking ?? this.coachThinking,
       selectedSquare: identical(selectedSquare, _unset)
           ? this.selectedSquare
           : selectedSquare as Square?,
@@ -217,6 +230,8 @@ class GameState {
       llmStats: llmStats ?? this.llmStats,
       eventLog: eventLog ?? this.eventLog,
       moveHistory: moveHistory ?? this.moveHistory,
+      canUndo: canUndo ?? this.canUndo,
+      canRedo: canRedo ?? this.canRedo,
       lastMove: identical(lastMove, _unset)
           ? this.lastMove
           : lastMove as LastMove?,
