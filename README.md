@@ -14,11 +14,11 @@ optional LLM banter, hint explanations, and post-game recaps.
 ## Local Commands
 
 ```bash
-rtk dart format --set-exit-if-changed .
-rtk flutter analyze
-rtk flutter test
-rtk flutter run -d windows
-rtk flutter build windows --release
+dart format --set-exit-if-changed .
+flutter analyze
+flutter test
+flutter run -d windows
+flutter build windows --release
 ```
 
 ## What Does Not Go Into Git
@@ -42,7 +42,7 @@ repo because the file is larger than 100 MB. Download it only when you need a
 local packaged build:
 
 ```powershell
-rtk powershell -ExecutionPolicy Bypass -File .\tools\download_stockfish.ps1
+powershell -ExecutionPolicy Bypass -File .\tools\download_stockfish.ps1
 ```
 
 The script downloads the official Windows x64 Stockfish release into:
@@ -75,8 +75,8 @@ These variables override the defaults used by the download and release scripts:
 Local release build:
 
 ```powershell
-rtk powershell -ExecutionPolicy Bypass -File .\tools\download_stockfish.ps1
-rtk flutter build windows --release
+powershell -ExecutionPolicy Bypass -File .\tools\download_stockfish.ps1
+flutter build windows --release
 ```
 
 Installer packaging uses:
@@ -121,14 +121,14 @@ Remove-Item ".\build" -Recurse -Force
 4. If you also want to clear Flutter-generated local metadata for this checkout:
 
 ```powershell
-rtk flutter clean
+flutter clean
 ```
 
 5. If you no longer want the downloaded Dart and Flutter package artifacts for
 this project, refresh dependencies again later with:
 
 ```powershell
-rtk flutter pub get
+flutter pub get
 ```
 
 ## Notes
